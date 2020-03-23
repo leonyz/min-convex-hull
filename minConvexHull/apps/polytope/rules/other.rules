@@ -1,0 +1,9 @@
+user_function test2( $ , $ ){
+   my($a, $b) = @_;
+   return test3($a, $b);
+}
+
+sub test3{
+   my($a, $b) = @_;
+   return 7;
+}

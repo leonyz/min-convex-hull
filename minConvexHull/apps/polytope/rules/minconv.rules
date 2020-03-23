@@ -1,0 +1,445 @@
+# input: square matrix X
+# output: copy of square matrix X
+user_function copy_matrix($){
+	my ($X) = @_;
+	my $d = $X->rows();
+	my $copy_X = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($d,$d);
+	for (my $i=0; $i<$d; ++$i){
+		for (my $j=0; $j<$d; ++$j){
+			$copy_X->elem($i,$j) = $X->elem($i,$j);
+		}
+	}
+	return $copy_X;
+}
+
+
+#input: matrix X
+#output: matrix val X obtained by taking entrywise valuations of X
+user_function val_matrix($) {
+    my ($X)=@_;
+    my $d=$X->rows();
+    my $e=$X->cols();
+    my $val_X=new Matrix<TropicalNumber<Min,Rational>>($d,$e);
+    for (my $i=0; $i<$d; ++$i) {
+		for (my $j=0; $j<$e; ++$j) {
+	    	$val_X->elem($i,$j)=($X->elem($i,$j)->val());
+		}
+    }
+    return $val_X;
+}
+
+# input: square matrix and lists of previous pivot rows and columns
+# output: lists of pivot rows and columns with next pivot appended
+user_function next_pivot( $ , @ ){
+   my ($N, @pivots) = (@_);
+   my $infinity = new TropicalNumber<Min>("inf");
+   my $val_N = val_matrix($N);
+   my $num_pivots = scalar @pivots;
+   for (my $i = 0; $i < $num_pivots; ++$i) {
+   	$val_N -> elem($pivots[$i][0], $pivots[$i][1]) = $infinity;
+   }
+   my $current_min = $infinity;
+   my $current_pivot_row = 0;
+   my $current_pivot_col = 0;
+   my $d = $val_N->rows();
+   for (my $i = 0; $i<$d; ++$i) {
+   	for (my $j = 0; $j<$d; ++$j) {
+   		if ($val_N->elem($i,$j) < $current_min) {
+   			$current_pivot_row = $i;
+   			$current_pivot_col = $j;
+   			$current_min = $val_N->elem($i,$j);
+   		}
+   	}
+   }
+   push @pivots, [$current_pivot_row, $current_pivot_col];
+   return @pivots;
+}
+
+# input: square matrix and pivot position
+# output: square matrix with column of pivot cleared
+user_function clear_column( $, @){
+	my ($N, @pivot) = (@_);
+	my $d = $N->rows();
+	my $pivot_row = $pivot[0][0];
+	my $pivot_col = $pivot[0][1];
+	my $N_row = $N->row($pivot_row);
+	for (my $i = 0; $i < $d; ++$i) {
+		if ($i != $pivot_row) {
+			$N->row($i) = $N->row($i) - $N_row * $N->elem($i,$pivot_col) / $N->elem($pivot_row,$pivot_col);
+		}
+	}
+	return $N;
+}
+
+# input: square matrix and pivot position
+# output: square matrix with row of pivot cleared
+user_function clear_row( $, @ ){
+	my ($N, @pivot) = (@_);
+	my $d = $N->rows();
+	my $pivot_row = $pivot[0][0];
+	my $pivot_col = $pivot[0][1];
+	my $N_col = $N->col($pivot_col);
+	for (my $i = 0; $i < $d; ++$i) {
+		if ($i != $pivot_col) {
+			$N->col($i) = $N->col($i) - $N_col * $N->elem($pivot_row,$i) / $N->elem($pivot_row,$pivot_col);
+		}
+	}
+	return $N;
+}
+
+#input: two square matrices representing lattices
+# output: square matrix B that is basis for first lattice, permutation matrix Delta such that B*Delta is basis for second lattice
+user_function sa_basis( $ , $ ){
+	my ($M1, $M2) = (@_);
+	my $B = copy_matrix($M1);
+	my $C = copy_matrix($M2);
+	my $d = $M1->rows();
+	my @pivots = ();
+	for (my $i = 0; $i < $d; ++$i) {
+		my $N = inv($B)*$C;
+		my $old_N = copy_matrix($N);
+		@pivots = next_pivot($N, @pivots);
+		my $pivot = $pivots[-1];
+		$N = clear_column($N, $pivot);
+		my $L = $N*inv($old_N);
+		$N = clear_row($N, $pivot);
+		my $R = inv($old_N)*inv($L)*$N;
+		$B = $B*inv($L);
+		$C = $C*$R;
+	}
+	return ($B, inv($B)*$C);
+}
+
+#input: invertible matrix over valued field
+#output: array of maximum valuation of entries in each column of matrix
+user_function min_valuation_of_columns( $ ){
+	my ($M) = @_;
+	my $val_M = val_matrix($M);
+	my $d = $M->cols();
+	my @min_col_valuations = ();
+	for (my $j = 0; $j < $d; ++$j){
+		my $min_col_valuation = $val_M->elem(0,$j);
+		for (my $i = 1; $i < $d; ++$i){
+			if ($min_col_valuation > $val_M->elem($i,$j)) {
+				$min_col_valuation = $val_M->elem($i,$j);
+			}
+		}
+		push @min_col_valuations, $min_col_valuation;
+	}
+	return @min_col_valuations;
+}
+
+#input: array with tropical rational coordinates, array of indices not to consider
+#output: maximum value of entry in subarray of first array
+user_function min_entry_of_subarray( @ ) {
+	my (@merged_input_array) = @_;
+	my @v = @{$merged_input_array[0]};
+	my @indices = @{$merged_input_array[1]};
+	my $d = scalar @v;
+	my $min_entry = $v[0];
+	for (my $i = 0; $i < $d; ++$i){
+		my $entry = $v[$i];
+		if ($entry < $min_entry) {
+			if (!(grep {$_ eq $i} @indices)) {
+				$min_entry = $entry;
+			}
+		}
+}
+	return $min_entry;
+}
+
+# input: square matrix M representing lattice
+#	     square matrix A representing apartment
+#        permutation sigma prescribing columns of pivot sequence
+#output: square matrix B representing sa-basis of M and A, with prescribed column pivot sequence sigma
+user_function sa_basis_with_prescribed_permutation( $ , $ , @) {
+	my ($M, $A, @sigma) = (@_);
+	my $B = copy_matrix($M);
+	my $C = copy_matrix($A); # copy matrices to avoid changing inputs
+	my $d = $M->rows();
+	my $t=monomials<Rational,Rational>(1);
+	my $pi = new PuiseuxFraction<Min>($t);
+	my @pivots = (); # list of pivots already appeared (should match up with input @sigma in the end)
+	my @column_pivots = (); # list of pivot columns already appeared
+	for (my $i = 0; $i < $d-1; ++$i){
+		my $N = inv($B)*$C;
+		my @min_col_valuations = min_valuation_of_columns($N);
+		my $col_val_i = $min_col_valuations[$sigma[0][$i]];
+		my $rational_col_val_i = new Rational($col_val_i);
+		my $reference_min_col_vals = \@min_col_valuations;
+		my $reference_columns_pivots = \@column_pivots;
+		my @input_array = ($reference_min_col_vals, $reference_columns_pivots);
+		my $min_col_valuation = min_entry_of_subarray(@input_array);
+		my $rational_min_col_valuation = new Rational($min_col_valuation);
+		my $delta = $rational_min_col_valuation - $rational_col_val_i - 1;
+		my $scaling_factor = new PuiseuxFraction<Min,Rational,Rational>(1);
+		for (my $j = 0; $j < -$delta; ++$j){
+			$scaling_factor = $scaling_factor / $pi;
+		}
+		push @column_pivots, $sigma[0][$i];
+		my $Delta = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($d,$d);
+		for (my $j = 0; $j < $d; ++$j){
+			if (grep {$_ eq $j} @column_pivots){
+				$Delta->elem($j,$j) = $scaling_factor;
+			}
+			if (!(grep {$_ eq $j} @column_pivots)){
+				$Delta->elem($j,$j) = 1;
+			}
+		}
+		$C = $C*$Delta;
+		$N = $N*$Delta;
+		my $old_N = copy_matrix($N);
+		@pivots = next_pivot($N, @pivots);
+		my @pivot = $pivots[-1];
+		$N = clear_column($N, @pivot);
+		my $L = $N*inv($old_N);
+		$N = clear_row($N, @pivot);
+		my $R = inv($old_N)*inv($L)*$N;
+		$B = $B*inv($L);
+		$C = $C*$R;
+	}
+	return $B;
+}
+
+#input: square matrix representing lattice and square matrix representing apartment
+#output: list of square matrices representing apartments covering convex hull of input lattice & input apartment
+user_function convex_hull_of_lattice_and_apartment( $, $ ){
+	my ($B, $A) = (@_);
+	my $d = $B->rows();
+	my @Sd = group::symmetric_group($d)->PERMUTATION_ACTION->ALL_GROUP_ELEMENTS;
+	my @apt_cover = ();
+	for (my $i = 0; $i < $Sd[0]->size; ++$i){
+		my $sigma = $Sd[0][$i];
+		push @apt_cover, sa_basis_with_prescribed_permutation($B, $A, $sigma);
+	}
+	return @apt_cover;
+}
+
+
+#input: array of matrices
+#output: single matrix obtained by concatenating all matrices in array together
+user_function concatenate_matrices( @ ){
+	my (@matrix_array) = (@_);
+	my $concatenated_matrix = $matrix_array[0];
+	my $n = scalar @matrix_array;
+	for (my $i = 1; $i < $n; ++$i){
+		$concatenated_matrix = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($concatenated_matrix|$matrix_array[$i]);
+	}
+	return $concatenated_matrix;
+}
+
+
+#input: rectangular matrix over Puiseux series with more columns than rows
+#output: pruned matrix with duplicate columns removed
+user_function remove_duplicate_columns( $ ){
+	my ($redundant_matrix) = (@_);
+	my @list_of_cols = ();
+	push @list_of_cols, $redundant_matrix->col(0);
+	my $d = $redundant_matrix->rows;
+	my $n = $redundant_matrix->cols;
+	my $pruned_matrix = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($d,1);
+	$pruned_matrix->col(0) = $redundant_matrix->col(0);
+	for (my $i = 1; $i < $n; ++$i){
+		my $current_col = $redundant_matrix->col($i);
+		if (!(grep {$_ eq $current_col} @list_of_cols)){
+			push @list_of_cols, $current_col;
+			$pruned_matrix = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($pruned_matrix|$current_col);
+		}
+	}
+	return $pruned_matrix;
+}
+
+#input: rectangular matrix over tropical numbers with more columns than rows
+#output: pruned matrix with duplicate columns removed
+user_function remove_duplicate_columns_tropical_matrix( $ ){
+	my ($redundant_matrix) = (@_);
+	my @list_of_cols = ();
+	push @list_of_cols, $redundant_matrix->col(0);
+	my $d = $redundant_matrix->rows;
+	my $n = $redundant_matrix->cols;
+	my $pruned_matrix = new Matrix<TropicalNumber<Min>>($d,1);
+	$pruned_matrix->col(0) = $redundant_matrix->col(0);
+	for (my $i = 1; $i < $n; ++$i){
+		my $current_col = $redundant_matrix->col($i);
+		if (!(grep {$_ eq $current_col} @list_of_cols)){
+			push @list_of_cols, $current_col;
+			$pruned_matrix = new Matrix<TropicalNumber<Min>>($pruned_matrix|$current_col);
+		}
+	}
+	return $pruned_matrix;
+}
+
+#input: array of invertible matrices representing lattice classes
+#output: list of apartments covering the convex hull of lattice classes
+user_function covering_apartment_list( @ ){
+	my @list_of_matrices = (@_);
+	if (scalar @list_of_matrices == 1){
+		return @list_of_matrices;
+	}
+	if (scalar @list_of_matrices == 2){
+		my ($sa_basis, $throwaway_perm_matrix) = sa_basis($list_of_matrices[0],$list_of_matrices[1]);
+		return ($sa_basis);
+	}
+	my $first_matrix = shift @list_of_matrices;
+	my @apartment_list = ();
+	my @sublist_of_apartments = covering_apartment_list(@list_of_matrices);
+	my $n = scalar @sublist_of_apartments;
+	print($n);
+	print("\n");
+	for (my $i = 0; $i < $n; ++$i){
+		print($i);
+		print("\n");
+		print($first_matrix);
+		print($sublist_of_apartments[$i]);
+		my @L_A = convex_hull_of_lattice_and_apartment($first_matrix, $sublist_of_apartments[$i]);
+		@apartment_list = (@apartment_list, @L_A);
+	}
+	return @apartment_list;
+}
+
+#input: invertible matrix, permutation matrix forming output of sa_basis function
+#output: invertible matrix, diagonal matrix obtained by rearranging columns of inputs
+#	     so that diagonal matrix elements have increasing valuations
+user_function rearrange_sa_basis( @ ){
+	my ($sa_basis, $permutation_matrix) = (@_);
+	my $d = $sa_basis->rows;
+	my $rearranged_sa_basis = copy_matrix($sa_basis);
+	my $rearranged_permutation_matrix = copy_matrix($permutation_matrix);
+	my @list_of_col_indices = ();
+	for (my $j = 0; $j < $d-1; ++$j){
+			my $min_val = new TropicalNumber<Min>("inf");
+			my $min_col_index = -1;
+			my @min_valuation_of_columns = min_valuation_of_columns($permutation_matrix);
+			for (my $i = 0; $i < $d; ++$i){
+			if (!(grep {$_ eq $i} @list_of_col_indices)) {
+				if ($min_val > $min_valuation_of_columns[$i]) {
+					$min_val = $min_valuation_of_columns[$i];
+					$min_col_index = $i;
+				}
+			}
+		}
+		$rearranged_sa_basis->col($j) = $sa_basis->col($min_col_index);
+		$rearranged_permutation_matrix->col($j) = $permutation_matrix->col($min_col_index);
+		push @list_of_col_indices, $min_col_index;
+	}
+	return ($rearranged_sa_basis, $rearranged_permutation_matrix);
+}
+
+#input: array of three invertible matrices representing lattice classes
+#output: list of apartments covering the convex triangle
+user_function covering_apartment_list_of_triangle( @ ){
+	my @list_of_matrices = (@_);
+
+}
+
+#input: array of invertible matrices representing lattice classes in the building
+#output: enveloping membrane covering the convex hull of the lattice classes
+user_function enveloping_membrane( @ ){
+	my @list_of_matrices = (@_);
+	my @covering_apartment_list = covering_apartment_list(@list_of_matrices);
+	my $redundant_matrix = concatenate_matrices(@covering_apartment_list);
+	my $pruned_matrix = remove_duplicate_columns($redundant_matrix);
+	return $pruned_matrix;
+}
+
+#input: matrix over tropical numbers
+#output: vector of tropical row sum of matrix
+user_function tropical_row_sum_of_matrix( $ ){
+	my ($mat1) = (@_);
+	my $v = $mat1->row(0);
+	my $d = $mat1->rows;
+	for (my $i = 1; $i < $d; ++$i){
+		$v = $v + $mat1->row($i);
+	}
+	return $v;
+}
+
+#input: list of row vectors over tropical numbres
+#output: matrix obtained by stacking rows on top of each other
+user_function matrix_from_rows( @ ){
+	my @list_of_rows = (@_);
+	my $m = scalar @list_of_rows;
+	my $n = $list_of_rows[0]->dim;
+	my $M = new Matrix<TropicalNumber<Min,Rational>>($m,$n);
+	for (my $i = 0; $i < $m; ++$i){
+		$M->row($i) = $list_of_rows[$i];
+	}
+	return $M;
+}
+
+#input: array of invertible matrices representing lattice classes in the building
+#output: tropical polytope isomorphic to their convex hull
+user_function convex_hull( @ ){
+	my @list_of_matrices = (@_);
+	my $s = scalar @list_of_matrices;
+	my $M = enveloping_membrane(@list_of_matrices);
+	my @list_of_tropical_points = ();
+	for (my $i = 0; $i < $s; ++$i){
+		my $Mi = $list_of_matrices[$i];
+		my $Pi = tropical_row_sum_of_matrix(val_matrix(inv($Mi)*$M));
+		push @list_of_tropical_points, $Pi;
+	}
+	my $tropical_points_matrix = matrix_from_rows(@list_of_tropical_points);
+	my $tropical_polytope = new tropical::Polytope<Min>(POINTS=>$tropical_points_matrix);
+	return $tropical_polytope;
+}
+
+#input: array of at most 4 invertible matrices representing lattice classes in the building
+#output: tropical polytope isomorphic to their convex hull with visualization enabled
+user_function convex_hull_with_visual ( @ ){
+	my @list_of_matrices = (@_);
+	my $s = scalar @list_of_matrices;
+	my $M = enveloping_membrane(@list_of_matrices);
+	my @list_of_tropical_points = ();
+	for (my $i = 0; $i < $s; ++$i){
+		my $Mi = $list_of_matrices[$i];
+		my $Pi = tropical_row_sum_of_matrix(val_matrix(inv($Mi)*$M));
+		push @list_of_tropical_points, $Pi;
+	}
+	my $tropical_points_matrix = matrix_from_rows(@list_of_tropical_points);
+	my $tropical_points_matrix = remove_duplicate_columns_tropical_matrix($tropical_points_matrix);
+	my $tropical_points_matrix = transpose($tropical_points_matrix);
+	my $tropical_polytope = new tropical::Polytope<Min>(POINTS=>$tropical_points_matrix);
+	return $tropical_polytope;
+}
+
+#input: array of three invertible matrices representing lattice classes in the building
+#output: tropical polytope in TP2 isomorphic to their convex hull
+user_function convex_triangle ( @ ){
+	my @list_of_matrices = (@_);
+
+}
+
+#input: integer s at most 4, integer d, integer r
+#output: tropical polytope isomorphic to convex hull of s matrices of dim d x d
+#        with first matrix identity, second matrix diagonal sampled uniformly from t^a
+# & the entries of other matrices  sampled uniformly from t^a - t^b, for a,b in [-r+1, r-1]
+user_function list_of_random_matrices( $, $, $){
+	set_var_names<UniPolynomial<Rational,Rational>>(qw(t));
+	my $t=monomials<Rational,Rational>(1);
+	my ($s, $d, $r) = (@_);
+	my @list_of_matrices = ();
+
+	for (my $i = 0; $i < $s; ++$i){
+		my $M = new Matrix<PuiseuxFraction<Min,Rational,Rational>>($d,$d);
+		if ($i == 0){
+			for (my $j = 0; $j < $d; ++$j){
+				$M->elem($j,$j) = 1;
+			}
+		}
+		if ($i == 1){
+			for (my $j = 0; $j < $d; ++$j){
+				$M->elem($j,$j) = new PuiseuxFraction<Min>($t**(int(rand(2*$r)-$r)));
+			}
+		}
+		if ($i > 1){
+			for (my $j = 0; $j < $d; ++$j){
+				for (my $k = 0; $k < $d; ++$k){
+					$M->elem($j,$k) = new PuiseuxFraction<Min>($t**(int(rand(2*$r)-$r))-$t**(int(rand(2*$r)-$r)));
+				}
+			}
+		}
+		push @list_of_matrices, $M;
+	}
+	return @list_of_matrices;
+}

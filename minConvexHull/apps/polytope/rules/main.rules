@@ -1,0 +1,11 @@
+
+INCLUDE
+   other.rules
+   minconv.rules
+
+user_function test1( $ ){
+   my($a) = @_;
+   return 2*$a;
+}
+
+user_function new_inv(Matrix:wary) : c++ (include => "polymake/polytope/new_inv.h");
